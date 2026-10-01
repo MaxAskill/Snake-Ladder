@@ -20,7 +20,8 @@ npm run build
 npm run preview
 ```
 
-The local Windows build command remains `npm run build`. For a Linux production host, use `npm run build:render`.
+The `npm run build` command works on both Windows and Linux. It uses the
+OneDrive-safe PowerShell process when available and falls back to Vite on Linux.
 
 ## Deploy the complete game on Render
 
