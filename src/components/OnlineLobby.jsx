@@ -5,6 +5,10 @@ import { createMultiplayerClient, MULTIPLAYER_SERVER_URL } from '../multiplayerC
 import OnlineGame from './OnlineGame.jsx';
 
 const COLORS = ['#ea5b3d','#3c73df','#23a476','#9a62d5','#eba928','#e35f96','#168ea1','#73564a'];
+const SESSION_KEY = 'snake-ladder-online-session-v1';
+const loadSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; } };
+const saveSession = session => localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+const clearSession = () => localStorage.removeItem(SESSION_KEY);
 const call = (socket, event, payload = {}) => new Promise(resolve => {
   if (!socket.connected) return resolve({ ok: false, error: 'Not connected to the multiplayer server.' });
   socket.timeout(8000).emit(event, payload, (error, response) => resolve(error ? { ok: false, error: 'The multiplayer server did not respond. Please try again.' } : response));
@@ -12,7 +16,7 @@ const call = (socket, event, payload = {}) => new Promise(resolve => {
 
 export default function OnlineLobby({ onBack }) {
   const socket = useMemo(() => createMultiplayerClient(), []);
-  const [view, setView] = useState('menu');
+  const [view, setView] = useState(() => loadSession()?.roomCode ? 'recovering' : 'menu');
   const [room, setRoom] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [identity, setIdentity] = useState({ name: '', icon: TOKEN_ICONS[0], color: COLORS[0] });
@@ -24,7 +28,18 @@ export default function OnlineLobby({ onBack }) {
   const [connection, setConnection] = useState(socket.connected ? 'connected' : 'connecting');
 
   useEffect(() => {
-    const connected = async () => { setConnection('connected'); setError(''); const result = await call(socket, 'rooms:list'); if (result?.ok) setRooms(result.rooms); };
+    const connected = async () => {
+      setConnection('connected'); setError('');
+      const directory = await call(socket, 'rooms:list');
+      if (directory?.ok) setRooms(directory.rooms);
+      const saved = loadSession();
+      if (!saved?.roomCode) return;
+      const result = saved.spectator
+        ? await call(socket, 'room:watch', { code: saved.roomCode })
+        : await call(socket, 'room:reconnect', saved);
+      if (!result?.ok) { clearSession(); setSelf(null); setRoom(null); setView('menu'); return; }
+      setSelf(saved); setRoom(result.room); setView(result.room.status === 'lobby' ? 'lobby' : 'game');
+    };
     const disconnected = () => setConnection('reconnecting');
     const failed = connectionError => { setConnection('unavailable'); setError(`Cannot reach ${MULTIPLAYER_SERVER_URL}: ${connectionError.message}`); };
     const update = next => setRoom(next);
@@ -34,25 +49,21 @@ export default function OnlineLobby({ onBack }) {
     return () => { socket.off('connect', connected); socket.off('disconnect', disconnected); socket.off('connect_error', failed); socket.off('room:update', update); socket.off('rooms:update', setRooms); socket.off('game:started', started); socket.disconnect(); };
   }, [socket]);
 
-  useEffect(() => {
-    if (connection !== 'connected' || !self?.spectator || !self.roomCode) return;
-    call(socket, 'room:watch', { code: self.roomCode }).then(result => result?.ok && setRoom(result.room));
-  }, [connection, self?.spectator, self?.roomCode, socket]);
-
   const submit = async type => {
     if (pending) return; setPending(true); setError('');
     const result = await call(socket, type === 'create' ? 'room:create' : 'room:join', { ...identity, code });
     setPending(false); if (!result?.ok) return setError(result?.error || 'Unable to connect.');
-    setSelf({ playerId: result.playerId, sessionToken: result.sessionToken }); setRoom(result.room);
+    const session = { playerId: result.playerId, sessionToken: result.sessionToken, roomCode: result.room.code };
+    saveSession(session); setSelf(session); setRoom(result.room);
     setNotice(result.colorChanged ? 'That color was taken, so another available color was assigned.' : '');
     setView(result.room.status === 'lobby' ? 'lobby' : 'game');
   };
   const watch = async roomCode => {
     if (pending) return; setPending(true); setError(''); const result = await call(socket, 'room:watch', { code: roomCode }); setPending(false);
     if (!result?.ok) return setError(result?.error || 'Unable to watch that room.');
-    setSelf({ spectator: true, roomCode }); setRoom(result.room); setView(result.room.status === 'lobby' ? 'lobby' : 'game');
+    const session = { spectator: true, roomCode }; saveSession(session); setSelf(session); setRoom(result.room); setView(result.room.status === 'lobby' ? 'lobby' : 'game');
   };
-  const leave = async () => { await call(socket, 'room:leave'); setRoom(null); setSelf(null); setView('menu'); };
+  const leave = async () => { await call(socket, 'room:leave'); clearSession(); setRoom(null); setSelf(null); setView('menu'); };
   const me = room?.players?.find(player => player.id === self?.playerId);
   const isSpectator = Boolean(self?.spectator);
   const isHost = Boolean(me && room && me.id === room.hostId);
@@ -73,7 +84,7 @@ export default function OnlineLobby({ onBack }) {
     <label>Player color<div className="online-colors">{COLORS.map(color => <button type="button" aria-label={color} className={identity.color === color ? 'selected' : ''} style={{ background: color }} onClick={() => setIdentity({ ...identity, color })} key={color}/>)}</div></label>{error && <p className="online-error">{error}</p>}<button className="primary-button" type="submit" disabled={pending || connection !== 'connected'}>{pending ? 'Connecting…' : connection !== 'connected' ? 'Waiting for server…' : view === 'create' ? 'Create room' : 'Join game'}</button>
   </form></section>;
 
-  if ((view === 'lobby' || view === 'game') && !room) return <section className="online-screen"><div className="online-card"><h1>Loading room…</h1><p>Waiting for the authoritative room snapshot.</p></div></section>;
+  if (view === 'recovering' || ((view === 'lobby' || view === 'game') && !room)) return <section className="online-screen"><div className="online-card"><div className="eyebrow">Reconnecting</div><h1>Restoring your game…</h1><p>Checking your saved player session with the authoritative server.</p></div></section>;
   if (view === 'game') return <OnlineGame socket={socket} room={room} self={self} onSnapshot={setRoom} onLeave={leave}/>;
 
   return <section className="online-screen"><div className="online-lobby"><header><div><span className="eyebrow">{isSpectator ? 'Watching lobby' : 'Online room'}</span><h1>{room.code}</h1></div><button type="button" onClick={() => navigator.clipboard?.writeText(room.code)}>Copy code</button><span className={`connection-state ${connection}`}>● {connection}</span></header>

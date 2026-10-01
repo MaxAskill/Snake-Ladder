@@ -26,7 +26,10 @@ import { AudioManager } from "./audioManager.js";
 const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export default function App() {
-  const [playType, setPlayType] = useState(null);
+  const [playType, setPlayType] = useState(() => {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage.getItem("snake-ladder-online-session-v1") ? "online" : null;
+  });
   const [profiles, setProfiles] = useState(() =>
     Array.from({ length: 4 }, (_, i) => ({
       name: "",
