@@ -805,6 +805,7 @@ export default function App() {
               .join(" ") || "No powers"}
           </small>
         </div>
+        <p className="mobile-game-tip">For a larger board, rotate your phone to landscape. Roll controls stay at the bottom.</p>
         <div className="game-layout">
           <Board
             players={engine.players}
