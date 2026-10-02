@@ -28,7 +28,13 @@ export class GameEngine {
   getPower(id) { return EFFECT_BY_ID[id]; }
   planMovement(player, amount, { exact = true } = {}) {
     const destination = player.position + amount;
-    if (exact && this.settings.exactRoll && destination > 100) return { player, from: player.position, path: [], blocked: true };
+    if (exact && this.settings.exactRoll && destination > 100) {
+      const target = Math.max(1, 100 - (destination - 100));
+      const path = [];
+      for (let position = player.position + 1; position <= 100; position++) path.push(position);
+      for (let position = 99; position >= target; position--) path.push(position);
+      return { player, from: player.position, path, blocked: false, bounced: true, overshoot: destination - 100 };
+    }
     const target = Math.max(1, Math.min(100, destination));
     if (target === player.position) return { player, from: player.position, path: [], blocked: false };
     const direction = target > player.position ? 1 : -1;

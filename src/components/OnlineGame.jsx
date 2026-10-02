@@ -97,6 +97,10 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
           } else if (event.type === 'MOVE_BLOCKED') {
             setActiveTile(event.payload.from);
             await delay(450);
+          } else if (event.type === 'FINISH_BOUNCED') {
+            setPowerAction({ icon: '↩️', title: `Bounce back ${event.payload.overshoot}!`, text: `Passed 100 and returned to Tile ${event.payload.to}.` });
+            await delay(1300);
+            setPowerAction(null);
           } else if (event.type === 'WHEEL_SPUN') {
             const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
             activePower = event.payload.effect.id;

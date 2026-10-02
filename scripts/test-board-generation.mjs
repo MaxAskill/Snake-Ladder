@@ -13,4 +13,8 @@ for (const board of Object.values(BOARD_PRESETS)) {
     if (engine.boardPresetId !== board.id || engine.players.some(player => player.position !== 0)) throw new Error(`Rematch reset failed for ${board.name}`);
   }
 }
-console.log('Validated all 5 board presets across 2/8 players and every game mode.');
+const bounceEngine = new GameEngine([{ name: 'Bounce' }, { name: 'Other' }], { mode: 'classic' });
+bounceEngine.players[0].position = 97;
+const bounce = bounceEngine.planMovement(bounceEngine.players[0], 5);
+if (!bounce.bounced || bounce.overshoot !== 2 || bounce.path.join(',') !== '98,99,100,99,98') throw new Error(`Finish bounce path is incorrect: ${bounce.path.join(',')}`);
+console.log('Validated all 5 board presets, every game mode, and finish bounce-back movement.');

@@ -8,7 +8,7 @@ export const ANIMATION_SPEEDS = {
 export const MODE_PRESETS = {
   classic: { id: 'classic', name: 'Classic', description: 'Pure dice, snakes, and ladders.', exactRoll: true, extraTurnOnSix: true, wheelEnabled: false, rouletteFrequency: 'normal', inventoryLimit: 0, snakes: 'normal', ladders: 'normal', chaosEnabled: false, animationSpeed: 'cinematic' },
   fate: { id: 'fate', name: 'Wheel of Fate', description: 'The complete power-and-roulette race.', exactRoll: true, extraTurnOnSix: true, wheelEnabled: true, rouletteFrequency: 'normal', inventoryLimit: 2, snakes: 'normal', ladders: 'normal', chaosEnabled: true, animationSpeed: 'cinematic' },
-  party: { id: 'party', name: 'Party Chaos', description: 'More wheels, attacks, and wild reversals.', exactRoll: false, extraTurnOnSix: true, wheelEnabled: true, rouletteFrequency: 'high', inventoryLimit: 2, snakes: 'high', ladders: 'normal', chaosEnabled: true, animationSpeed: 'cinematic' },
+  party: { id: 'party', name: 'Party Chaos', description: 'More wheels, attacks, and wild reversals.', exactRoll: true, extraTurnOnSix: true, wheelEnabled: true, rouletteFrequency: 'high', inventoryLimit: 2, snakes: 'high', ladders: 'normal', chaosEnabled: true, animationSpeed: 'cinematic' },
 };
 export const DEFAULT_CUSTOM = { ...MODE_PRESETS.fate, id: 'custom', name: 'Custom Game' };
 export const ROULETTE_TILE_SETS = { low: [18, 39, 58, 77, 94], normal: [7, 18, 27, 39, 45, 58, 69, 77, 89, 94], high: [5, 7, 13, 18, 25, 27, 33, 39, 45, 54, 58, 61, 69, 77, 83, 89, 94] };

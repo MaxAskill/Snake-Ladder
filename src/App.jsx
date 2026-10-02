@@ -689,6 +689,10 @@ export default function App() {
       setHint("Too high — no move");
       await sleep(reducedMotion ? 100 : speed.finalLandingPause);
     } else {
+      if (move.bounced) {
+        engine.log(`${player.name} passed 100 and bounced back ${move.overshoot} tile${move.overshoot === 1 ? "" : "s"}.`, "blocked");
+        showFeedback("↩️", `Bounce back ${move.overshoot}!`, "penalty");
+      }
       engine.log(
         `${player.name} moved from ${move.from || "Start"} to ${player.position}.`,
       );

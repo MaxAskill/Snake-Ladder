@@ -40,7 +40,56 @@ function storePower(room, player, effect, events) { const limit = room.settings.
 function applyAttack(room, attacker, target, effect, events) { attacker.stats.attacksUsed++; let recipient = target; if (target.inventory.includes('cancel')) { target.inventory.splice(target.inventory.indexOf('cancel'), 1); target.stats.defensesActivated++; events.push(gameEvent(room, 'DEFENSE_ACTIVATED', { playerId: target.id, effectId: 'cancel' })); gameLog(room, `${target.name} cancelled ${attacker.name}'s attack.`); return; } if (target.inventory.includes('reflect')) { target.inventory.splice(target.inventory.indexOf('reflect'), 1); target.stats.defensesActivated++; recipient = attacker; events.push(gameEvent(room, 'DEFENSE_ACTIVATED', { playerId: target.id, effectId: 'reflect' })); gameLog(room, `${target.name} reflected ${attacker.name}'s attack.`); } if (effect.id === 'pull-back') { movePlayer(room, recipient, -GAME_BALANCE.pullBackMovement, events); gameLog(room, `${recipient.name} was pulled back ${GAME_BALANCE.pullBackMovement} tiles.`); } else if (recipient !== attacker) { const attackerPosition = attacker.position; attacker.position = target.position; target.position = attackerPosition; events.push(gameEvent(room, 'POSITIONS_SWAPPED', { playerId: attacker.id, targetId: target.id, playerPosition: attacker.position, targetPosition: target.position })); gameLog(room, `${attacker.name} swapped positions with ${target.name}.`); } }
 function applyWheelEffect(room, player, effect, events) { player.stats.rouletteSpins++; player.stats.powersUsed++; if (effect.category === 'chaos') player.stats.chaosEvents++; events.push(gameEvent(room, 'WHEEL_SPUN', { playerId: player.id, effect })); gameLog(room, `${player.name} spun ${effect.name}.`); if (effect.stored) { storePower(room, player, effect, events); return false; } let extraTurn = false; const rivals = room.players.filter(candidate => candidate.id !== player.id); if (['boost','backtrack','jackpot','rocket'].includes(effect.id)) { const amount = effect.id === 'boost' ? GAME_BALANCE.boostMovement : effect.id === 'backtrack' ? -GAME_BALANCE.backtrackMovement : effect.id === 'jackpot' ? GAME_BALANCE.jackpotMovement : GAME_BALANCE.rocketMovement; movePlayer(room, player, amount, events); resolveConnections(room, player, events); } else if (effect.id === 'skip-turn') player.statusEffects.skipNextTurn = true; else if (effect.id === 'dice-curse') player.statusEffects.diceCurse = true; else if (effect.id === 'extra-turn') extraTurn = true; else if (effect.id === 'position-swap' || effect.id === 'pull-back') { const target = randomChoice(rivals); if (target) applyAttack(room, player, target, effect, events); } else if (effect.id === 'everyone-back') rivals.forEach(rival => movePlayer(room, rival, -GAME_BALANCE.everyoneBackMovement, events)); else if (effect.id === 'snake-panic') { const target = randomChoice(rivals); if (target) { const snake = Object.entries(getBoardPreset(room.boardPresetId).snakes).map(([head,bottom]) => ({ head:Number(head), bottom })).filter(item => item.bottom < target.position).sort((a,b) => b.bottom-a.bottom)[0]; if (snake) { const from = target.position; target.position = snake.bottom; events.push(gameEvent(room, 'POWER_MOVED', { playerId: target.id, from, to: target.position, path: [] })); } } } else if (effect.id === 'ladder-rush') { const board = getBoardPreset(room.boardPresetId), start = Object.keys(board.ladders).map(Number).filter(tile => tile > player.position).sort((a,b) => a-b)[0]; if (start) { const from = player.position; player.position = board.ladders[start]; events.push(gameEvent(room, 'LADDER_TRIGGERED', { playerId: player.id, from, to: player.position })); } else movePlayer(room, player, 3, events); } else if (effect.id === 'mass-shuffle') { const positions = room.players.map(item => item.position); for (let index = positions.length - 1; index > 0; index--) { const swap = randomInt(index + 1); [positions[index], positions[swap]] = [positions[swap], positions[index]]; } room.players.forEach((item,index) => { item.position = positions[index]; }); events.push(gameEvent(room, 'POSITIONS_SHUFFLED', { positions: Object.fromEntries(room.players.map(item => [item.id,item.position])) })); } else if (effect.id === 'leader-trouble' || effect.id === 'last-place-boost') { const edge = effect.id === 'leader-trouble' ? Math.max(...room.players.map(item => item.position)) : Math.min(...room.players.map(item => item.position)), chosen = randomChoice(room.players.filter(item => item.position === edge)), amount = effect.id === 'leader-trouble' ? -GAME_BALANCE.leaderTroubleMovement : GAME_BALANCE.lastPlaceBoostMovement; movePlayer(room, chosen, amount, events); } else if (effect.id === 'dice-battle') { const rival = randomChoice(rivals); if (rival) { let first = randomInt(1,7), second = randomInt(1,7); if (first === second) second = second === 6 ? 1 : second + 1; const winner = first > second ? player : rival, loser = winner === player ? rival : player; movePlayer(room, winner, 5, events); movePlayer(room, loser, -2, events); events.push(gameEvent(room, 'DICE_BATTLE', { playerId: player.id, targetId: rival.id, playerRoll: first, targetRoll: second, winnerId: winner.id })); } } events.push(gameEvent(room, 'POWER_APPLIED', { playerId: player.id, effectId: effect.id })); return extraTurn; }
 function advanceOnlineTurn(room, player, events, extraTurn) { if (!extraTurn) { let guard = 0; do { room.currentPlayerIndex = (room.currentPlayerIndex + 1) % room.players.length; if (room.currentPlayerIndex === 0) room.round++; const candidate = room.players[room.currentPlayerIndex]; if (!candidate.statusEffects.skipNextTurn) break; candidate.statusEffects.skipNextTurn = false; candidate.stats.turnsSkipped++; events.push(gameEvent(room, 'TURN_SKIPPED', { playerId: candidate.id })); gameLog(room, `${candidate.name} skipped a turn.`); guard++; } while (guard < room.players.length); } room.phase = extraTurn ? 'WAITING_FOR_EXTRA_TURN_CONFIRMATION' : 'WAITING_FOR_ROLL'; events.push(gameEvent(room, 'TURN_CHANGED', { playerId: room.players[room.currentPlayerIndex].id, round: room.round, extraTurn })); if (extraTurn) gameLog(room, `${player.name} earned an extra turn.`); }
-function resolveCoreRoll(room, player) { const events = [], board = getBoardPreset(room.boardPresetId); let roll = randomInt(1, 7); if (player.inventory.includes('double-roll')) { const second = randomInt(1, 7); player.inventory.splice(player.inventory.indexOf('double-roll'), 1); events.push(gameEvent(room, 'DOUBLE_ROLL_USED', { playerId: player.id, rolls: [roll, second], selected: Math.max(roll, second) })); roll = Math.max(roll, second); } const rawRoll = roll; player.stats.diceRolls++; player.stats.diceTotal += rawRoll; if (player.statusEffects.diceCurse) { roll = Math.max(1, roll - GAME_BALANCE.diceCursePenalty); player.statusEffects.diceCurse = false; events.push(gameEvent(room, 'DICE_CURSE_APPLIED', { playerId: player.id, original: rawRoll, result: roll })); } events.push(gameEvent(room, 'DICE_ROLLED', { playerId: player.id, result: rawRoll, movement: roll })); gameLog(room, `${player.name} rolled ${rawRoll}${roll !== rawRoll ? ` and moves ${roll}` : ''}.`); const from = player.position, destination = from + roll; if (room.settings.exactRoll && destination > 100) { events.push(gameEvent(room, 'MOVE_BLOCKED', { playerId: player.id, from, roll })); gameLog(room, `${player.name} needs an exact roll to reach 100.`); } else { movePlayer(room, player, roll, events, 'PLAYER_MOVED'); gameLog(room, `${player.name} moved to Tile ${player.position}.`); resolveConnections(room, player, events); } let extraTurn = rawRoll === 6 && room.settings.extraTurnOnSix; const specialType = room.settings.wheelEnabled && board.specialTiles[player.position]; if (player.position !== 100 && specialType && (specialType !== 'chaos' || room.settings.chaosEnabled)) { const effect = pickWeightedEffect(Math.random, room.settings, specialType); extraTurn = applyWheelEffect(room, player, effect, events) || extraTurn; } if (player.position === 100) { room.winnerId = player.id; room.status = 'finished'; room.phase = 'GAME_OVER'; events.push(gameEvent(room, 'GAME_WON', { playerId: player.id })); gameLog(room, `${player.name} won the match!`); } else advanceOnlineTurn(room, player, events, extraTurn); return events; }
+function resolveCoreRoll(room, player) {
+  const events = [], board = getBoardPreset(room.boardPresetId);
+  let roll = randomInt(1, 7);
+  if (player.inventory.includes('double-roll')) {
+    const second = randomInt(1, 7);
+    player.inventory.splice(player.inventory.indexOf('double-roll'), 1);
+    events.push(gameEvent(room, 'DOUBLE_ROLL_USED', { playerId: player.id, rolls: [roll, second], selected: Math.max(roll, second) }));
+    roll = Math.max(roll, second);
+  }
+  const rawRoll = roll;
+  player.stats.diceRolls++;
+  player.stats.diceTotal += rawRoll;
+  if (player.statusEffects.diceCurse) {
+    roll = Math.max(1, roll - GAME_BALANCE.diceCursePenalty);
+    player.statusEffects.diceCurse = false;
+    events.push(gameEvent(room, 'DICE_CURSE_APPLIED', { playerId: player.id, original: rawRoll, result: roll }));
+  }
+  events.push(gameEvent(room, 'DICE_ROLLED', { playerId: player.id, result: rawRoll, movement: roll }));
+  gameLog(room, `${player.name} rolled ${rawRoll}${roll !== rawRoll ? ` and moves ${roll}` : ''}.`);
+  const from = player.position, destination = from + roll;
+  if (room.settings.exactRoll && destination > 100) {
+    const overshoot = destination - 100, to = Math.max(1, 100 - overshoot), path = [];
+    for (let tile = from + 1; tile <= 100; tile++) path.push(tile);
+    for (let tile = 99; tile >= to; tile--) path.push(tile);
+    player.position = to;
+    player.stats.totalSpacesMoved += path.length;
+    events.push(gameEvent(room, 'PLAYER_MOVED', { playerId: player.id, from, to, path, bounced: true, overshoot }));
+    events.push(gameEvent(room, 'FINISH_BOUNCED', { playerId: player.id, from, to, overshoot }));
+    gameLog(room, `${player.name} passed 100 and bounced back ${overshoot} tile${overshoot === 1 ? '' : 's'} to ${to}.`);
+    resolveConnections(room, player, events);
+  } else {
+    movePlayer(room, player, roll, events, 'PLAYER_MOVED');
+    gameLog(room, `${player.name} moved to Tile ${player.position}.`);
+    resolveConnections(room, player, events);
+  }
+  let extraTurn = rawRoll === 6 && room.settings.extraTurnOnSix;
+  const specialType = room.settings.wheelEnabled && board.specialTiles[player.position];
+  if (player.position !== 100 && specialType && (specialType !== 'chaos' || room.settings.chaosEnabled)) {
+    const effect = pickWeightedEffect(Math.random, room.settings, specialType);
+    extraTurn = applyWheelEffect(room, player, effect, events) || extraTurn;
+  }
+  if (player.position === 100) {
+    room.winnerId = player.id;
+    room.status = 'finished';
+    room.phase = 'GAME_OVER';
+    events.push(gameEvent(room, 'GAME_WON', { playerId: player.id }));
+    gameLog(room, `${player.name} won the match!`);
+  } else advanceOnlineTurn(room, player, events, extraTurn);
+  return events;
+}
 function clearRollTimer(room) { if (room.rollTimer) clearTimeout(room.rollTimer); room.rollTimer = null; room.actionDeadline = null; }
 function scheduleRollTimer(room) {
   clearRollTimer(room);
