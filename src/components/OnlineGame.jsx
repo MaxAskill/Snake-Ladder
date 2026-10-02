@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { getBoardPreset } from '../boardPresets.js';
 import { ANIMATION_SPEEDS } from '../gameConfig.js';
+import { ROULETTE_EFFECTS } from '../rouletteConfig.js';
 import Board from './Board.jsx';
 import OnlineWheelReveal from './OnlineWheelReveal.jsx';
 import PowerUpGuide from './PowerUpGuide.jsx';
 
 const delay = ms => new Promise(resolve => window.setTimeout(resolve, ms));
 const ONLINE_PACE = ANIMATION_SPEEDS.cinematic;
+const POWER_BY_ID = Object.fromEntries(ROULETTE_EFFECTS.map(power => [power.id, power]));
 const dots = [[],[4],[0,8],[0,4,8],[0,2,6,8],[0,2,4,6,8],[0,2,3,5,6,8]];
 const DiceFace = ({ value }) => <div className="dice-face">{Array.from({ length: 9 }, (_, index) => <i className={dots[value].includes(index) ? 'on' : ''} key={index}/>)}</div>;
 const request = (socket, event, payload = {}) => new Promise(resolve => socket.timeout(8000).emit(event, payload, (error, response) => resolve(error ? { ok: false, error: 'The server did not respond.' } : response)));
@@ -22,6 +24,7 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
   const [activeTile, setActiveTile] = useState(null);
   const [connectionTravel, setConnectionTravel] = useState(null);
   const [powerResult, setPowerResult] = useState(null);
+  const [wheelSpinPending, setWheelSpinPending] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [powerAction, setPowerAction] = useState(null);
   const [boardEffect, setBoardEffect] = useState('');
@@ -30,10 +33,13 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
   const queue = useRef(Promise.resolve());
   const lastSequence = useRef(room.eventSequence);
   const announcementResolver = useRef(null);
+  const wheelReleaseResolver = useRef(null);
+  const wheelReleaseSnapshot = useRef(null);
   const board = getBoardPreset(room.boardPresetId);
   const current = room.players[room.currentPlayerIndex];
   const isSpectator = Boolean(self?.spectator);
   const me = room.players.find(player => player.id === self?.playerId);
+  const visibleMe = players.find(player => player.id === self?.playerId);
   const winner = room.players.find(player => player.id === room.winnerId);
   const myTurn = !isSpectator && !animating && room.status === 'playing' && room.phase === 'WAITING_FOR_ROLL' && current?.id === me?.id;
   const specialTiles = room.settings.wheelEnabled ? board.specialTiles : {};
@@ -118,7 +124,9 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
           } else if (event.type === 'WHEEL_SPUN') {
             const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
             activePower = event.payload.effect.id;
-            setPowerResult({ ...event.payload.effect, playerName: player?.name || 'Player' });
+            setPowerResult({ ...event.payload.effect, playerId: event.payload.playerId, playerName: player?.name || 'Player', phase: 'waiting' });
+            await new Promise(resolve => { wheelReleaseResolver.current = resolve; });
+            setPowerResult({ ...event.payload.effect, playerId: event.payload.playerId, playerName: player?.name || 'Player', phase: 'spinning' });
             await delay(ONLINE_PACE.wheel + 600);
             setPowerResult(null);
           } else if (event.type === 'POSITIONS_SWAPPED' || event.type === 'POSITIONS_SHUFFLED' || event.type === 'DICE_BATTLE') {
@@ -144,13 +152,16 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
         setActiveTile(null);
         setRolling(false);
         setAnimating(false);
-        if (packet.snapshot.eventSequence >= lastSequence.current) onSnapshot(packet.snapshot);
+        if (packet.snapshot.eventSequence >= lastSequence.current) onSnapshot(wheelReleaseSnapshot.current || packet.snapshot);
+        wheelReleaseSnapshot.current = null;
       });
     };
     const confirmed = packet => { lastSequence.current = packet.snapshot.eventSequence; onSnapshot(packet.snapshot); setAnnouncement(null); const resolve = announcementResolver.current; announcementResolver.current = null; resolve?.(); };
+    const wheelReleased = packet => { wheelReleaseSnapshot.current = packet.snapshot; setWheelSpinPending(false); const resolve = wheelReleaseResolver.current; wheelReleaseResolver.current = null; resolve?.(); };
     socket.on('game:events', receive);
     socket.on('game:extra-turn-confirmed', confirmed);
-    return () => { socket.off('game:events', receive); socket.off('game:extra-turn-confirmed', confirmed); announcementResolver.current?.(); announcementResolver.current = null; };
+    socket.on('game:wheel-released', wheelReleased);
+    return () => { socket.off('game:events', receive); socket.off('game:extra-turn-confirmed', confirmed); socket.off('game:wheel-released', wheelReleased); announcementResolver.current?.(); announcementResolver.current = null; wheelReleaseResolver.current?.(); wheelReleaseResolver.current = null; };
   }, [socket, onSnapshot]);
 
   useEffect(() => {
@@ -166,18 +177,26 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
     if (!result.ok) { setRolling(false); setAnimating(false); setError(result.error); }
   };
 
+  const spinWheel = async () => {
+    if (!powerResult || powerResult.playerId !== me?.id || wheelSpinPending) return;
+    setWheelSpinPending(true);
+    const result = await request(socket, 'game:spin-wheel');
+    if (!result.ok) { setWheelSpinPending(false); setError(result.error); }
+  };
+
   return <main className="online-game" style={{ '--current': current?.color || '#174b3c' }}>
     <header className="game-header"><div className="brand"><span className="brand-mark">S&L</span><div><strong>{isSpectator ? 'Watching Match' : 'Online Match'}</strong><small>Room {room.code} · {board.name} · relaxed pace</small></div></div><div className="header-actions">{isSpectator && <span className="spectator-chip">👁 Spectator</span>}<button className="guide-button" type="button" onClick={() => setGuideOpen(true)}>✨ Powers</button><span className="rule-chip">Sequence {room.eventSequence}</span><button className="icon-button" type="button" title="Leave room" onClick={onLeave}>×</button></div></header>
     <p className="mobile-game-tip">For a larger board, rotate your phone to landscape. Roll controls stay at the bottom.</p>
     <div className="game-layout">
       <div className={`board-effect-wrap ${boardEffect}`}><Board players={players} activeTile={activeTile} specialTiles={specialTiles} snakes={board.snakes} ladders={board.ladders} currentPlayerId={current?.id} movingPlayerId={animating ? current?.id : null} connectionTravel={connectionTravel}/></div>
       <aside className="sidebar"><section className="turn-card"><div className="turn-label"><i className="pulse-dot"/> {winner ? 'Match complete' : animating ? 'Resolving turn' : myTurn ? 'Your turn' : `Waiting for ${current?.name}`}{secondsRemaining!==null&&<b className={secondsRemaining<=10?'urgent':''}>00:{String(secondsRemaining).padStart(2,'0')}</b>}</div><div className="current-player"><span className="current-token" style={{ '--player': current?.color }}>{current?.icon}</span><div><strong>{current?.name}</strong><span>{current?.id === me?.id ? 'You · ' : ''}Round {room.round}</span></div></div><div className={`dice ${rolling ? 'rolling' : ''}`}><DiceFace value={rolling ? dicePreview : dice}/></div><button className="roll-button" disabled={!myTurn || animating || Boolean(winner)} onClick={roll}>{isSpectator ? 'Watching live' : animating ? 'Resolving turn…' : myTurn ? 'Roll dice' : `Waiting for ${current?.name}`}</button>{secondsRemaining!==null&&<div className="roll-timer-track"><i style={{width:`${secondsRemaining/30*100}%`}}/></div>}{error && <p className="online-error">{error}</p>}</section>
-        <section className="panel"><div className="panel-title"><h2>Online players</h2><span>{room.players.length}/8</span></div><div className="rankings">{[...room.players].sort((a,b) => b.position-a.position).map((player,index) => <div className={`ranking ${player.id === current?.id ? 'active' : ''}`} key={player.id}><span className="rank">{index+1}</span><span className="mini-token" style={{ '--player': player.color }}>{player.icon}</span><span className="rank-name">{player.name}{player.id === me?.id ? ' (You)' : ''}<small>{player.inventory?.length ? ` 🎒 ${player.inventory.length}` : ''}{player.statusEffects?.diceCurse ? ' 💀' : ''}{player.statusEffects?.skipNextTurn ? ' 🚫' : ''}</small></span><strong>{player.position || '—'}</strong></div>)}</div></section>
+        {me && room.settings.inventoryLimit > 0 && <section className="panel online-inventory"><div className="inventory-heading"><span>Your current powers</span><small>{visibleMe?.inventory?.length || 0}/{room.settings.inventoryLimit}</small></div><div className="inventory-slots">{Array.from({ length: room.settings.inventoryLimit }, (_, index) => { const power = POWER_BY_ID[visibleMe?.inventory?.[index]]; return <div className={`inventory-slot ${power?.category || 'empty'}`} title={power?.description} key={index}>{power ? <><span>{power.icon}</span><small>{power.name}</small></> : <><b>＋</b><small>Empty</small></>}</div>; })}</div></section>}
+        <section className="panel"><div className="panel-title"><h2>Online players</h2><span>{room.players.length}/8</span></div><div className="rankings">{[...players].sort((a,b) => b.position-a.position).map((player,index) => <div className={`ranking ${player.id === current?.id ? 'active' : ''}`} key={player.id}><span className="rank">{index+1}</span><span className="mini-token" style={{ '--player': player.color }}>{player.icon}</span><span className="rank-name">{player.name}{player.id === me?.id ? ' (You)' : ''}<small className="online-player-powers">{(player.inventory || []).map((id, powerIndex) => <i title={POWER_BY_ID[id]?.name} key={`${id}-${powerIndex}`}>{POWER_BY_ID[id]?.icon}</i>)}{player.statusEffects?.diceCurse ? ' 💀' : ''}{player.statusEffects?.skipNextTurn ? ' 🚫' : ''}</small></span><strong>{player.position || '—'}</strong></div>)}</div></section>
         <section className="panel log-panel"><div className="panel-title"><h2>Game log</h2><span>Authoritative</span></div><div className="event-log">{room.log.map(entry => <div className="log-entry" key={`${entry.sequence}-${entry.text}`}><i/><span>{entry.text}</span><small>#{entry.sequence}</small></div>)}</div></section>
       </aside>
     </div>
     {rolling && <div className="center-dice-stage" aria-live="polite"><div className="center-dice-copy">{diceLocked ? `${current?.name} rolled ${dicePreview}` : `${current?.name} rolls…`}</div><div className={`center-synced-die ${diceLocked ? 'locked' : ''}`}><DiceFace value={dicePreview}/></div><strong className="center-dice-value">{dicePreview}</strong></div>}
-    <OnlineWheelReveal result={powerResult}/>
+    <OnlineWheelReveal result={powerResult} canSpin={powerResult?.playerId === me?.id} onSpin={spinWheel} spinPending={wheelSpinPending}/>
     <PowerUpGuide open={guideOpen} onClose={() => setGuideOpen(false)}/>
     {powerAction && <div className="power-action-banner" aria-live="assertive"><span>{powerAction.icon}</span><div><strong>{powerAction.title}</strong><small>{powerAction.text}</small></div></div>}
     {announcement && <div className="turn-announcement-backdrop"><div className="turn-announcement" role="dialog" aria-modal="true" aria-labelledby="extra-turn-title"><span>{announcement.icon}</span><div><strong id="extra-turn-title">{announcement.title}</strong><small>{announcement.text}</small>{announcement.playerId === me?.id ? <button type="button" onClick={confirmAnnouncement}>Continue</button> : <em>Waiting for {room.players.find(player => player.id === announcement.playerId)?.name} to continue…</em>}</div></div></div>}
