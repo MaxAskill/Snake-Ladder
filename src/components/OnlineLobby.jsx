@@ -85,7 +85,7 @@ export default function OnlineLobby({ onBack }) {
   </form></section>;
 
   if (view === 'recovering' || ((view === 'lobby' || view === 'game') && !room)) return <section className="online-screen"><div className="online-card"><div className="eyebrow">Reconnecting</div><h1>Restoring your game…</h1><p>Checking your saved player session with the authoritative server.</p></div></section>;
-  if (view === 'game') return <OnlineGame socket={socket} room={room} self={self} onSnapshot={setRoom} onLeave={leave}/>;
+  if (view === 'game') return <OnlineGame socket={socket} room={room} self={self} onSnapshot={setRoom} onLeave={leave} onHome={async () => { await leave(); onBack(); }}/>;
 
   return <section className="online-screen"><div className="online-lobby"><header><div><span className="eyebrow">{isSpectator ? 'Watching lobby' : 'Online room'}</span><h1>{room.code}</h1></div><button type="button" onClick={() => navigator.clipboard?.writeText(room.code)}>Copy code</button><span className={`connection-state ${connection}`}>● {connection}</span></header>
     {isSpectator && <p className="spectator-banner">👁 Spectator mode · You are watching and do not occupy a player slot.</p>}{notice && <p className="online-notice">{notice}</p>}

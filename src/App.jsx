@@ -25,6 +25,8 @@ import {
 import { AudioManager } from "./audioManager.js";
 
 const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const diceDots = [[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]];
+const CenterDiceFace = ({ value }) => <div className="dice-face">{Array.from({ length: 9 }, (_, index) => <i className={diceDots[value].includes(index) ? "on" : ""} key={index}/>)}</div>;
 
 export default function App() {
   const [playType, setPlayType] = useState(() => {
@@ -55,6 +57,8 @@ export default function App() {
   const [dice, setDice] = useState(1);
   const [secondDice, setSecondDice] = useState(null);
   const [rolling, setRolling] = useState(false);
+  const [centerDiceVisible, setCenterDiceVisible] = useState(false);
+  const [centerDiceLocked, setCenterDiceLocked] = useState(false);
   const [hint, setHint] = useState("Roll to make your move");
   const [activeTile, setActiveTile] = useState(null);
   const [finalLandingTile, setFinalLandingTile] = useState(null);
@@ -110,9 +114,15 @@ export default function App() {
     setFinalLandingTile(null);
     setMovingPlayerId(null);
     setConnectionTravel(null);
+    setCenterDiceVisible(false);
+    setCenterDiceLocked(false);
     setPaused(false);
     setSettingsOpen(false);
     setEngine(null);
+  };
+  const goHome = () => {
+    newGame();
+    setPlayType(null);
   };
   const replay = () => {
     gameVersion.current++;
@@ -120,6 +130,8 @@ export default function App() {
     engine.reset();
     setDice(1);
     setSecondDice(null);
+    setCenterDiceVisible(false);
+    setCenterDiceLocked(false);
     setHint("Roll to make your move");
     setFeedback(null);
     setActiveTile(null);
@@ -624,6 +636,8 @@ export default function App() {
 
   const animateDice = async () => {
     setRolling(true);
+    setCenterDiceVisible(true);
+    setCenterDiceLocked(false);
     for (let i = 0; i < 8; i++) {
       setDice(1 + Math.floor(Math.random() * 6));
       await sleep(65);
@@ -650,10 +664,12 @@ export default function App() {
       showFeedback("⚡", `Double Roll: ${rawRoll} & ${alternative} → ${selectedRoll}`, "power");
       await sleep(1200);
       setDice(selectedRoll);
+      setCenterDiceLocked(true);
       setSecondDice(null);
     } else {
       await animateDice();
       setDice(rawRoll);
+      setCenterDiceLocked(true);
     }
     if (version !== gameVersion.current) return;
     const player = engine.currentPlayer;
@@ -674,6 +690,8 @@ export default function App() {
     refresh();
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     await sleep(reducedMotion ? 100 : speed.diceResultPause);
+    setCenterDiceVisible(false);
+    setCenterDiceLocked(false);
     const move = await animateMovement(player, movement, { exact: true });
     if (move.blocked) {
       engine.log(`${player.name} needs an exact roll to reach 100.`, "blocked");
@@ -741,6 +759,8 @@ export default function App() {
   if (playType === 'online') return <OnlineLobby onBack={() => setPlayType(null)} />;
   if (!engine)
     return (
+      <>
+      <button className="mode-switch-floating setup-switch" type="button" onClick={goHome}>⌂ Switch local / online</button>
       <SetupScreen
         profiles={profiles}
         setProfiles={setProfiles}
@@ -752,6 +772,7 @@ export default function App() {
         setBoardPresetId={setBoardPresetId}
         onStart={start}
       />
+      </>
     );
   const specialTiles = engine.specialTiles;
   return (
@@ -768,6 +789,7 @@ export default function App() {
             </div>
           </div>
           <div className="header-actions">
+            <button className="mode-switch-button" type="button" onClick={goHome} title="Switch between local and online game">⌂ <span>Switch mode</span></button>
             <button className="guide-button" type="button" onClick={() => setPowerGuideOpen(true)}>✨ Powers</button>
             <span className="rule-chip">
               {engine.settings.exactRoll
@@ -833,6 +855,7 @@ export default function App() {
           />
         </div>
       </section>
+      {centerDiceVisible && <div className="center-dice-stage" aria-live="polite"><div className="center-dice-copy">{centerDiceLocked ? `${engine.currentPlayer.name} rolled ${dice}` : `${engine.currentPlayer.name} rolls…`}</div><div className={`center-synced-die ${centerDiceLocked ? "locked" : ""}`}><CenterDiceFace value={dice}/></div><strong className="center-dice-value">{dice}</strong></div>}
       <GameFeedback feedback={feedback} />
       <PowerUpGuide open={powerGuideOpen} onClose={() => setPowerGuideOpen(false)} />
       {wheel && (

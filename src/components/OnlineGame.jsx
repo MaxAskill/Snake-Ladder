@@ -13,7 +13,7 @@ const dots = [[],[4],[0,8],[0,4,8],[0,2,6,8],[0,2,4,6,8],[0,2,3,5,6,8]];
 const DiceFace = ({ value }) => <div className="dice-face">{Array.from({ length: 9 }, (_, index) => <i className={dots[value].includes(index) ? 'on' : ''} key={index}/>)}</div>;
 const request = (socket, event, payload = {}) => new Promise(resolve => socket.timeout(8000).emit(event, payload, (error, response) => resolve(error ? { ok: false, error: 'The server did not respond.' } : response)));
 
-export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) {
+export default function OnlineGame({ socket, room, self, onSnapshot, onLeave, onHome }) {
   const [players, setPlayers] = useState(room.players);
   const [dice, setDice] = useState(1);
   const [dicePreview, setDicePreview] = useState(1);
@@ -185,6 +185,7 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
   };
 
   return <main className="online-game" style={{ '--current': current?.color || '#174b3c' }}>
+    <button className="mode-switch-floating online-switch" type="button" onClick={onHome}>⌂ Switch mode</button>
     <header className="game-header"><div className="brand"><span className="brand-mark">S&L</span><div><strong>{isSpectator ? 'Watching Match' : 'Online Match'}</strong><small>Room {room.code} · {board.name} · relaxed pace</small></div></div><div className="header-actions">{isSpectator && <span className="spectator-chip">👁 Spectator</span>}<button className="guide-button" type="button" onClick={() => setGuideOpen(true)}>✨ Powers</button><span className="rule-chip">Sequence {room.eventSequence}</span><button className="icon-button" type="button" title="Leave room" onClick={onLeave}>×</button></div></header>
     <p className="mobile-game-tip">For a larger board, rotate your phone to landscape. Roll controls stay at the bottom.</p>
     <div className="game-layout">
