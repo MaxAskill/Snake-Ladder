@@ -11,6 +11,7 @@ import GameFeedback from "./components/GameFeedback.jsx";
 import GameMenu from "./components/GameMenu.jsx";
 import PlayModeScreen from "./components/PlayModeScreen.jsx";
 import OnlineLobby from "./components/OnlineLobby.jsx";
+import PowerUpGuide from "./components/PowerUpGuide.jsx";
 import {
   ANIMATION_SPEEDS,
   createSettings,
@@ -64,6 +65,7 @@ export default function App() {
   const [feedback, setFeedback] = useState(null);
   const [paused, setPaused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [powerGuideOpen, setPowerGuideOpen] = useState(false);
   const choiceResolver = useRef(null);
   const wheelResolver = useRef(null);
   const feedbackTimer = useRef(null);
@@ -80,14 +82,11 @@ export default function App() {
     audio.current?.update(preferences);
     savePreferences(preferences);
   }, [preferences]);
-  const speed =
-    ANIMATION_SPEEDS[
-      engine?.settings.animationSpeed || settings.animationSpeed || "normal"
-    ];
+  const speed = ANIMATION_SPEEDS.cinematic;
   const start = () => {
     gameVersion.current++;
     audio.current?.unlock();
-    const matchSettings = mode === "custom" ? settings : MODE_PRESETS[mode];
+    const matchSettings = { ...(mode === "custom" ? settings : MODE_PRESETS[mode]), animationSpeed: "cinematic" };
     setPreferences((value) => ({
       ...value,
       preferredMode: mode,
@@ -769,11 +768,12 @@ export default function App() {
             <div>
               <strong>Snakes & Ladders</strong>
               <small>
-                {engine.settings.name} · {engine.settings.animationSpeed} speed
+                {engine.settings.name} · relaxed pace
               </small>
             </div>
           </div>
           <div className="header-actions">
+            <button className="guide-button" type="button" onClick={() => setPowerGuideOpen(true)}>✨ Powers</button>
             <span className="rule-chip">
               {engine.settings.exactRoll
                 ? "Exact roll to win"
@@ -838,6 +838,7 @@ export default function App() {
         </div>
       </section>
       <GameFeedback feedback={feedback} />
+      <PowerUpGuide open={powerGuideOpen} onClose={() => setPowerGuideOpen(false)} />
       {wheel && (
         <WheelOfFate
           player={wheel.player}

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { getBoardPreset } from '../boardPresets.js';
 import Board from './Board.jsx';
+import OnlineWheelReveal from './OnlineWheelReveal.jsx';
+import PowerUpGuide from './PowerUpGuide.jsx';
 
 const delay = ms => new Promise(resolve => window.setTimeout(resolve, ms));
 const dots = [[],[4],[0,8],[0,4,8],[0,2,6,8],[0,2,4,6,8],[0,2,3,5,6,8]];
@@ -17,6 +19,7 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
   const [activeTile, setActiveTile] = useState(null);
   const [connectionTravel, setConnectionTravel] = useState(null);
   const [powerResult, setPowerResult] = useState(null);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [error, setError] = useState('');
   const [clock, setClock] = useState(() => Date.now());
   const queue = useRef(Promise.resolve());
@@ -67,7 +70,7 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
             for (const tile of event.payload.path) {
               setPlayers(list => list.map(player => player.id === event.payload.playerId ? { ...player, position: tile } : player));
               setActiveTile(tile);
-              await delay(220);
+              await delay(340);
             }
             if (!event.payload.path.length) setPlayers(list => list.map(player => player.id === event.payload.playerId ? { ...player, position: event.payload.to } : player));
           } else if (event.type === 'SNAKE_TRIGGERED' || event.type === 'LADDER_TRIGGERED') {
@@ -84,7 +87,7 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
           } else if (event.type === 'WHEEL_SPUN') {
             const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
             setPowerResult({ ...event.payload.effect, playerName: player?.name || 'Player' });
-            await delay(2200);
+            await delay(4800);
             setPowerResult(null);
           } else if (event.type === 'POSITIONS_SWAPPED' || event.type === 'POSITIONS_SHUFFLED' || event.type === 'DICE_BATTLE') {
             setPlayers(packet.snapshot.players);
@@ -123,7 +126,7 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
   };
 
   return <main className="online-game" style={{ '--current': current?.color || '#174b3c' }}>
-    <header className="game-header"><div className="brand"><span className="brand-mark">S&L</span><div><strong>{isSpectator ? 'Watching Match' : 'Online Match'}</strong><small>Room {room.code} · {board.name}</small></div></div><div className="header-actions">{isSpectator && <span className="spectator-chip">👁 Spectator</span>}<span className="rule-chip">Sequence {room.eventSequence}</span><button className="icon-button" type="button" title="Leave room" onClick={onLeave}>×</button></div></header>
+    <header className="game-header"><div className="brand"><span className="brand-mark">S&L</span><div><strong>{isSpectator ? 'Watching Match' : 'Online Match'}</strong><small>Room {room.code} · {board.name} · relaxed pace</small></div></div><div className="header-actions">{isSpectator && <span className="spectator-chip">👁 Spectator</span>}<button className="guide-button" type="button" onClick={() => setGuideOpen(true)}>✨ Powers</button><span className="rule-chip">Sequence {room.eventSequence}</span><button className="icon-button" type="button" title="Leave room" onClick={onLeave}>×</button></div></header>
     <p className="mobile-game-tip">For a larger board, rotate your phone to landscape. Roll controls stay at the bottom.</p>
     <div className="game-layout">
       <Board players={players} activeTile={activeTile} specialTiles={specialTiles} snakes={board.snakes} ladders={board.ladders} currentPlayerId={current?.id} movingPlayerId={animating ? current?.id : null} connectionTravel={connectionTravel}/>
@@ -133,7 +136,8 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
       </aside>
     </div>
     {rolling && <div className="center-dice-stage" aria-live="polite"><div className="center-dice-copy">{current?.name} rolls…</div><div className="dice-cube-scene"><div className="dice-cube">{[1,2,3,4,5,6].map((value,index)=><div className={`dice-cube-face face-${index+1}`} key={value}><DiceFace value={value}/></div>)}</div></div></div>}
-    {powerResult && <div className="online-power-backdrop" aria-live="assertive"><div className={`online-power-result ${powerResult.category}`}><span className="online-power-icon">{powerResult.icon}</span><div className="eyebrow">Wheel of Fate</div><h2>{powerResult.name}</h2><p>{powerResult.playerName} spun the wheel</p><small>{powerResult.description}</small></div></div>}
+    <OnlineWheelReveal result={powerResult}/>
+    <PowerUpGuide open={guideOpen} onClose={() => setGuideOpen(false)}/>
     {announcement && <div className="turn-announcement-backdrop"><div className="turn-announcement" role="dialog" aria-modal="true" aria-labelledby="extra-turn-title"><span>{announcement.icon}</span><div><strong id="extra-turn-title">{announcement.title}</strong><small>{announcement.text}</small>{announcement.playerId === me?.id ? <button type="button" onClick={confirmAnnouncement}>Continue</button> : <em>Waiting for {room.players.find(player => player.id === announcement.playerId)?.name} to continue…</em>}</div></div></div>}
     {winner && <div className="modal"><div className="victory-card"><div className="trophy">🏆</div><h2>{winner.name} wins!</h2><p>Authoritative online match completed successfully.</p><button className="primary-button" onClick={onLeave}>Leave room</button></div></div>}
   </main>;
