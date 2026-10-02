@@ -16,6 +16,7 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
   const [announcement, setAnnouncement] = useState(null);
   const [activeTile, setActiveTile] = useState(null);
   const [connectionTravel, setConnectionTravel] = useState(null);
+  const [powerResult, setPowerResult] = useState(null);
   const [error, setError] = useState('');
   const [clock, setClock] = useState(() => Date.now());
   const queue = useRef(Promise.resolve());
@@ -62,12 +63,13 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
             setDice(event.payload.result);
             setRolling(false);
             await delay(250);
-          } else if (event.type === 'PLAYER_MOVED') {
+          } else if (event.type === 'PLAYER_MOVED' || event.type === 'POWER_MOVED') {
             for (const tile of event.payload.path) {
               setPlayers(list => list.map(player => player.id === event.payload.playerId ? { ...player, position: tile } : player));
               setActiveTile(tile);
               await delay(220);
             }
+            if (!event.payload.path.length) setPlayers(list => list.map(player => player.id === event.payload.playerId ? { ...player, position: event.payload.to } : player));
           } else if (event.type === 'SNAKE_TRIGGERED' || event.type === 'LADDER_TRIGGERED') {
             const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
             setConnectionTravel({ type: event.type === 'SNAKE_TRIGGERED' ? 'snake' : 'ladder', start: event.payload.from, end: event.payload.to, playerId: event.payload.playerId, icon: player.icon, color: player.color, duration: 950 });
@@ -79,9 +81,19 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
           } else if (event.type === 'MOVE_BLOCKED') {
             setActiveTile(event.payload.from);
             await delay(450);
+          } else if (event.type === 'WHEEL_SPUN') {
+            const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
+            setPowerResult({ ...event.payload.effect, playerName: player?.name || 'Player' });
+            await delay(2200);
+            setPowerResult(null);
+          } else if (event.type === 'POSITIONS_SWAPPED' || event.type === 'POSITIONS_SHUFFLED' || event.type === 'DICE_BATTLE') {
+            setPlayers(packet.snapshot.players);
+            await delay(700);
+          } else if (event.type === 'DEFENSE_ACTIVATED') {
+            await delay(650);
           } else if (event.type === 'TURN_CHANGED' && event.payload.extraTurn) {
             const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
-            await showAnnouncement({ icon: '🎲', title: 'Extra Turn!', text: `${player.name} rolled a 6 and goes again.`, playerId: player.id });
+            await showAnnouncement({ icon: '🎲', title: 'Extra Turn!', text: `${player.name} earned another roll.`, playerId: player.id });
           }
         }
         setPlayers(packet.snapshot.players);
@@ -116,11 +128,12 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
     <div className="game-layout">
       <Board players={players} activeTile={activeTile} specialTiles={specialTiles} snakes={board.snakes} ladders={board.ladders} currentPlayerId={current?.id} movingPlayerId={animating ? current?.id : null} connectionTravel={connectionTravel}/>
       <aside className="sidebar"><section className="turn-card"><div className="turn-label"><i className="pulse-dot"/> {winner ? 'Match complete' : animating ? 'Resolving turn' : myTurn ? 'Your turn' : `Waiting for ${current?.name}`}{secondsRemaining!==null&&<b className={secondsRemaining<=10?'urgent':''}>00:{String(secondsRemaining).padStart(2,'0')}</b>}</div><div className="current-player"><span className="current-token" style={{ '--player': current?.color }}>{current?.icon}</span><div><strong>{current?.name}</strong><span>{current?.id === me?.id ? 'You · ' : ''}Round {room.round}</span></div></div><div className={`dice ${rolling ? 'rolling' : ''}`}><DiceFace value={rolling ? dicePreview : dice}/></div><button className="roll-button" disabled={!myTurn || animating || Boolean(winner)} onClick={roll}>{isSpectator ? 'Watching live' : animating ? 'Resolving turn…' : myTurn ? 'Roll dice' : `Waiting for ${current?.name}`}</button>{secondsRemaining!==null&&<div className="roll-timer-track"><i style={{width:`${secondsRemaining/30*100}%`}}/></div>}{error && <p className="online-error">{error}</p>}</section>
-        <section className="panel"><div className="panel-title"><h2>Online players</h2><span>{room.players.length}/8</span></div><div className="rankings">{[...room.players].sort((a,b) => b.position-a.position).map((player,index) => <div className={`ranking ${player.id === current?.id ? 'active' : ''}`} key={player.id}><span className="rank">{index+1}</span><span className="mini-token" style={{ '--player': player.color }}>{player.icon}</span><span className="rank-name">{player.name}{player.id === me?.id ? ' (You)' : ''}</span><strong>{player.position || '—'}</strong></div>)}</div></section>
+        <section className="panel"><div className="panel-title"><h2>Online players</h2><span>{room.players.length}/8</span></div><div className="rankings">{[...room.players].sort((a,b) => b.position-a.position).map((player,index) => <div className={`ranking ${player.id === current?.id ? 'active' : ''}`} key={player.id}><span className="rank">{index+1}</span><span className="mini-token" style={{ '--player': player.color }}>{player.icon}</span><span className="rank-name">{player.name}{player.id === me?.id ? ' (You)' : ''}<small>{player.inventory?.length ? ` 🎒 ${player.inventory.length}` : ''}{player.statusEffects?.diceCurse ? ' 💀' : ''}{player.statusEffects?.skipNextTurn ? ' 🚫' : ''}</small></span><strong>{player.position || '—'}</strong></div>)}</div></section>
         <section className="panel log-panel"><div className="panel-title"><h2>Game log</h2><span>Authoritative</span></div><div className="event-log">{room.log.map(entry => <div className="log-entry" key={`${entry.sequence}-${entry.text}`}><i/><span>{entry.text}</span><small>#{entry.sequence}</small></div>)}</div></section>
       </aside>
     </div>
     {rolling && <div className="center-dice-stage" aria-live="polite"><div className="center-dice-copy">{current?.name} rolls…</div><div className="dice-cube-scene"><div className="dice-cube">{[1,2,3,4,5,6].map((value,index)=><div className={`dice-cube-face face-${index+1}`} key={value}><DiceFace value={value}/></div>)}</div></div></div>}
+    {powerResult && <div className="online-power-backdrop" aria-live="assertive"><div className={`online-power-result ${powerResult.category}`}><span className="online-power-icon">{powerResult.icon}</span><div className="eyebrow">Wheel of Fate</div><h2>{powerResult.name}</h2><p>{powerResult.playerName} spun the wheel</p><small>{powerResult.description}</small></div></div>}
     {announcement && <div className="turn-announcement-backdrop"><div className="turn-announcement" role="dialog" aria-modal="true" aria-labelledby="extra-turn-title"><span>{announcement.icon}</span><div><strong id="extra-turn-title">{announcement.title}</strong><small>{announcement.text}</small>{announcement.playerId === me?.id ? <button type="button" onClick={confirmAnnouncement}>Continue</button> : <em>Waiting for {room.players.find(player => player.id === announcement.playerId)?.name} to continue…</em>}</div></div></div>}
     {winner && <div className="modal"><div className="victory-card"><div className="trophy">🏆</div><h2>{winner.name} wins!</h2><p>Authoritative online match completed successfully.</p><button className="primary-button" onClick={onLeave}>Leave room</button></div></div>}
   </main>;
