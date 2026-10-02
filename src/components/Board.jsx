@@ -1,8 +1,8 @@
 import { LADDERS, SNAKES } from '../gameEngine.js';
 import { SPECIAL_TILE_TYPES } from '../boardPresets.js';
 import BoardConnections from './BoardConnections.jsx';
+import { SERPENTINE_TILES } from '../boardLayout.js';
 
-const tiles = Array.from({ length: 100 }, (_, index) => 100 - index);
 const POWER_BADGES = {
   'snake-shield': { icon: '🛡️', label: 'Snake Shield', type: 'shield' },
   'double-roll': { icon: '⚡', label: 'Double Roll', type: 'double' },
@@ -18,7 +18,7 @@ function TokenBadges({ player }) {
 }
 
 export default function Board({ players, activeTile, finalLandingTile, specialTiles = {}, snakes = SNAKES, ladders = LADDERS, currentPlayerId, movingPlayerId, connectionTravel }) {
-  return <section className="board-shell" aria-label="Snakes and Ladders board"><div className="board-scroll"><div className="board">{tiles.map(number => {
+  return <section className="board-shell" aria-label="Snakes and Ladders board"><div className="board-scroll"><div className="board">{SERPENTINE_TILES.map(number => {
     const occupants = players.filter(player => player.position === number);
     const special = SPECIAL_TILE_TYPES[specialTiles[number]];
     const classes = ['tile', occupants.length && 'occupied', number === 100 && 'finish', ladders[number] && 'ladder-start', snakes[number] && 'snake-start', special && `special-${special.type}`, activeTile === number && 'landed', finalLandingTile === number && 'final-landed'].filter(Boolean).join(' ');

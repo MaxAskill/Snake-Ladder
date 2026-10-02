@@ -2,9 +2,10 @@ import { COLORS } from '../gameEngine.js';
 import { MODE_PRESETS, TOKEN_ICONS } from '../gameConfig.js';
 import { BOARD_PRESETS, getSpecialTileCounts, SPECIAL_TILE_TYPES } from '../boardPresets.js';
 import BoardConnections from './BoardConnections.jsx';
+import { SERPENTINE_TILES } from '../boardLayout.js';
 const Select = ({ label, value, onChange, options }) => <label className="setting-field"><span>{label}</span><select value={value} onChange={event => onChange(event.target.value)}>{options.map(option => <option value={option.value ?? option} key={option.value ?? option}>{option.label ?? option}</option>)}</select></label>;
 const Toggle = ({ label, value, onChange }) => <button type="button" className={`setting-toggle ${value ? 'on' : ''}`} onClick={() => onChange(!value)}><span>{label}</span><b>{value ? 'ON' : 'OFF'}</b></button>;
-function BoardPreview({ board }) { return <div className="board-mini" aria-hidden="true">{Array.from({length:100},(_,i)=>100-i).map(tile=><i className={board.specialTiles[tile]?`mini-special ${board.specialTiles[tile]}`:''} key={tile}>{board.specialTiles[tile]&&SPECIAL_TILE_TYPES[board.specialTiles[tile]].icon}</i>)}<BoardConnections ladders={board.ladders} snakes={board.snakes}/></div>; }
+function BoardPreview({ board }) { return <div className="board-mini" aria-hidden="true">{SERPENTINE_TILES.map(tile=><i className={board.specialTiles[tile]?`mini-special ${board.specialTiles[tile]}`:''} key={tile}>{board.specialTiles[tile]&&SPECIAL_TILE_TYPES[board.specialTiles[tile]].icon}</i>)}<BoardConnections ladders={board.ladders} snakes={board.snakes}/></div>; }
 export default function SetupScreen({ profiles, setProfiles, mode, setMode, settings, setSettings, boardPresetId, setBoardPresetId, onStart }) {
   const resize = next => setProfiles(current => Array.from({ length: Math.max(2, Math.min(8, next)) }, (_, i) => current[i] || { name: '', color: COLORS[i], icon: TOKEN_ICONS[i], isBot: false, difficulty: 'normal' }));
   const update = (index, patch) => setProfiles(current => current.map((profile, i) => i === index ? { ...profile, ...patch } : profile));
