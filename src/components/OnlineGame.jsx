@@ -158,7 +158,7 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
         <section className="panel log-panel"><div className="panel-title"><h2>Game log</h2><span>Authoritative</span></div><div className="event-log">{room.log.map(entry => <div className="log-entry" key={`${entry.sequence}-${entry.text}`}><i/><span>{entry.text}</span><small>#{entry.sequence}</small></div>)}</div></section>
       </aside>
     </div>
-    {rolling && <div className="center-dice-stage" aria-live="polite"><div className="center-dice-copy">{current?.name} rolls…</div><div className="center-synced-die"><DiceFace value={dicePreview}/></div><strong className="center-dice-value">{dicePreview}</strong></div>}
+    {rolling && <div className="center-dice-stage" aria-live="polite"><div className="center-dice-copy">{diceLocked ? `${current?.name} rolled ${dicePreview}` : `${current?.name} rolls…`}</div><div className={`center-synced-die ${diceLocked ? 'locked' : ''}`}><DiceFace value={dicePreview}/></div><strong className="center-dice-value">{dicePreview}</strong></div>}
     <OnlineWheelReveal result={powerResult}/>
     <PowerUpGuide open={guideOpen} onClose={() => setGuideOpen(false)}/>
     {powerAction && <div className="power-action-banner" aria-live="assertive"><span>{powerAction.icon}</span><div><strong>{powerAction.title}</strong><small>{powerAction.text}</small></div></div>}
