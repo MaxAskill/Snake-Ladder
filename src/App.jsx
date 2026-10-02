@@ -218,6 +218,12 @@ export default function App() {
 
   const storePower = useCallback(
     async (player, effect) => {
+      if (effect.id === "double-roll" && engine.hasPower(player, effect.id)) {
+        engine.log(`${player.name} already has the maximum stored Double Roll.`, "defense");
+        showFeedback("⚡", "Double Roll already charged", "power");
+        refresh();
+        return;
+      }
       if (engine.addPower(player, effect.id)) {
         engine.log(`${player.name} stored ${effect.name}.`, "defense");
         showFeedback(effect.icon, `${effect.name} stored`, effect.category);
@@ -640,24 +646,9 @@ export default function App() {
       setSecondDice(alternative);
       engine.consumePower(engine.currentPlayer, "double-roll");
       refresh();
-      const choice = await requestDecision({
-        kind: "dice",
-        aiPlayer: engine.currentPlayer,
-        icon: "⚡",
-        eyebrow: "Double Roll activated",
-        title: "Choose your roll",
-        message: "Choose one result — they are not added together.",
-        options: [
-          { value: rawRoll, icon: "🎲", label: `Move ${rawRoll}`, detail: "First die" },
-          {
-            value: alternative,
-            icon: "🎲",
-            label: `Move ${alternative}`,
-            detail: "Second die",
-          },
-        ],
-      });
-      selectedRoll = choice ?? rawRoll;
+      selectedRoll = Math.max(rawRoll, alternative);
+      showFeedback("⚡", `Double Roll: ${rawRoll} & ${alternative} → ${selectedRoll}`, "power");
+      await sleep(1200);
       setDice(selectedRoll);
       setSecondDice(null);
     } else {

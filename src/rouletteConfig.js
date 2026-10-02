@@ -1,7 +1,7 @@
 export const ROULETTE_TILES = [7, 18, 27, 39, 45, 58, 69, 77, 89, 94];
 export const ROULETTE_EFFECTS = [
   { id: 'snake-shield', name: 'Snake Shield', icon: '🛡️', category: 'defense', rarity: 'rare', weight: 11, stored: true, description: 'Block the next snake.' },
-  { id: 'double-roll', name: 'Double Roll', icon: '⚡', category: 'power', rarity: 'rare', weight: 9, stored: true, description: 'Choose between two rolls next turn.' },
+  { id: 'double-roll', name: 'Double Roll', icon: '⚡', category: 'power', rarity: 'rare', weight: 9, stored: true, description: 'Roll twice next turn and use the higher result. Maximum 1 stored charge.' },
   { id: 'boost', name: 'Boost', icon: '⏩', category: 'power', rarity: 'common', weight: 15, stored: false, description: 'Move forward 3 tiles.' },
   { id: 'backtrack', name: 'Backtrack', icon: '⏪', category: 'penalty', rarity: 'common', weight: 12, stored: false, description: 'Move backward 3 tiles.' },
   { id: 'position-swap', name: 'Position Swap', icon: '🔄', category: 'attack', rarity: 'epic', weight: 7, stored: false, description: 'Swap places with a rival.' },

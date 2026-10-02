@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { getBoardPreset } from '../boardPresets.js';
+import { ANIMATION_SPEEDS } from '../gameConfig.js';
 import Board from './Board.jsx';
 import OnlineWheelReveal from './OnlineWheelReveal.jsx';
 import PowerUpGuide from './PowerUpGuide.jsx';
 
 const delay = ms => new Promise(resolve => window.setTimeout(resolve, ms));
+const ONLINE_PACE = ANIMATION_SPEEDS.cinematic;
 const dots = [[],[4],[0,8],[0,4,8],[0,2,6,8],[0,2,4,6,8],[0,2,3,5,6,8]];
 const DiceFace = ({ value }) => <div className="dice-face">{Array.from({ length: 9 }, (_, index) => <i className={dots[value].includes(index) ? 'on' : ''} key={index}/>)}</div>;
 const request = (socket, event, payload = {}) => new Promise(resolve => socket.timeout(8000).emit(event, payload, (error, response) => resolve(error ? { ok: false, error: 'The server did not respond.' } : response)));
@@ -64,48 +66,60 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
           if (event.type === 'DICE_ROLLED') {
             setDiceLocked(false);
             setRolling(true);
-            await delay(1250);
+            await delay(520);
             setDice(event.payload.result);
             setDiceLocked(true);
             setDicePreview(event.payload.result);
-            await delay(500);
+            await delay(ONLINE_PACE.diceResultPause);
             setRolling(false);
             setDiceLocked(false);
+          } else if (event.type === 'DOUBLE_ROLL_USED') {
+            const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
+            setPowerAction({ icon: '⚡', title: 'Double Roll activated!', text: `${player?.name || 'Player'} rolled ${event.payload.rolls.join(' and ')}. Higher roll ${event.payload.selected} wins.` });
+            await delay(ONLINE_PACE.feedback);
+            setPowerAction(null);
+          } else if (event.type === 'POWER_MAXED') {
+            const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
+            setPowerAction({ icon: event.payload.effect.icon, title: 'Double Roll already charged', text: `${player?.name || 'Player'} can store only one Double Roll.` });
+            await delay(ONLINE_PACE.feedback);
+            setPowerAction(null);
           } else if (event.type === 'PLAYER_MOVED' || event.type === 'POWER_MOVED') {
             if (event.type === 'POWER_MOVED' && activePower === 'snake-panic' && !event.payload.path.length) {
               const affected = packet.snapshot.players.find(item => item.id === event.payload.playerId);
               setPowerAction({ icon: '🐍', title: 'Snake Panic!', text: `${affected?.name || 'A player'} is dragged down.` });
-              setConnectionTravel({ type: 'snake', start: event.payload.from, end: event.payload.to, playerId: event.payload.playerId, icon: affected?.icon, color: affected?.color, duration: 1500 });
-              await delay(1500);
+              setConnectionTravel({ type: 'snake', start: event.payload.from, end: event.payload.to, playerId: event.payload.playerId, icon: affected?.icon, color: affected?.color, duration: ONLINE_PACE.snakeTravel });
+              await delay(ONLINE_PACE.snakeTravel);
               setConnectionTravel(null);
               setPowerAction(null);
             }
             for (const tile of event.payload.path) {
               setPlayers(list => list.map(player => player.id === event.payload.playerId ? { ...player, position: tile } : player));
               setActiveTile(tile);
-              await delay(340);
+              await delay(event.type === 'POWER_MOVED' ? ONLINE_PACE.powerStep : ONLINE_PACE.tileStep);
             }
             if (!event.payload.path.length) setPlayers(list => list.map(player => player.id === event.payload.playerId ? { ...player, position: event.payload.to } : player));
+            if (event.payload.path.length) await delay(ONLINE_PACE.finalLandingPause);
           } else if (event.type === 'SNAKE_TRIGGERED' || event.type === 'LADDER_TRIGGERED') {
             const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
-            setConnectionTravel({ type: event.type === 'SNAKE_TRIGGERED' ? 'snake' : 'ladder', start: event.payload.from, end: event.payload.to, playerId: event.payload.playerId, icon: player.icon, color: player.color, duration: 950 });
-            await delay(950);
+            const connectionDuration = event.type === 'SNAKE_TRIGGERED' ? ONLINE_PACE.snakeTravel : ONLINE_PACE.ladderTravel;
+            setConnectionTravel({ type: event.type === 'SNAKE_TRIGGERED' ? 'snake' : 'ladder', start: event.payload.from, end: event.payload.to, playerId: event.payload.playerId, icon: player.icon, color: player.color, duration: connectionDuration });
+            await delay(connectionDuration);
             setPlayers(list => list.map(item => item.id === event.payload.playerId ? { ...item, position: event.payload.to } : item));
             setConnectionTravel(null);
             setActiveTile(event.payload.to);
-            await delay(250);
+            await delay(ONLINE_PACE.finalLandingPause);
           } else if (event.type === 'MOVE_BLOCKED') {
             setActiveTile(event.payload.from);
-            await delay(450);
+            await delay(ONLINE_PACE.finalLandingPause);
           } else if (event.type === 'FINISH_BOUNCED') {
             setPowerAction({ icon: '↩️', title: `Bounce back ${event.payload.overshoot}!`, text: `Passed 100 and returned to Tile ${event.payload.to}.` });
-            await delay(1300);
+            await delay(ONLINE_PACE.feedback);
             setPowerAction(null);
           } else if (event.type === 'WHEEL_SPUN') {
             const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
             activePower = event.payload.effect.id;
             setPowerResult({ ...event.payload.effect, playerName: player?.name || 'Player' });
-            await delay(4800);
+            await delay(ONLINE_PACE.wheel + 600);
             setPowerResult(null);
           } else if (event.type === 'POSITIONS_SWAPPED' || event.type === 'POSITIONS_SHUFFLED' || event.type === 'DICE_BATTLE') {
             const action = event.type === 'POSITIONS_SWAPPED' ? { icon: '🔄', title: 'Position Swap!', text: 'Two players exchange places.' } : event.type === 'POSITIONS_SHUFFLED' ? { icon: '🔀', title: 'Mass Shuffle!', text: 'Every position is rearranged.' } : { icon: '🎲', title: 'Dice Battle!', text: 'The winner surges forward.' };
@@ -113,13 +127,13 @@ export default function OnlineGame({ socket, room, self, onSnapshot, onLeave }) 
             setBoardEffect(event.type === 'POSITIONS_SHUFFLED' ? 'shuffle' : 'impact');
             if (event.type === 'POSITIONS_SWAPPED') setActiveTile(event.payload.playerPosition);
             setPlayers(packet.snapshot.players);
-            await delay(1200);
+            await delay(ONLINE_PACE.swapTravel);
             setPowerAction(null);
             setBoardEffect('');
             setActiveTile(null);
           } else if (event.type === 'DEFENSE_ACTIVATED') {
             setPowerAction({ icon: event.payload.effectId === 'reflect' ? '🪞' : event.payload.effectId === 'cancel' ? '❌' : '🛡️', title: 'Defense activated!', text: event.payload.effectId.replace('-', ' ') });
-            await delay(1000);
+            await delay(ONLINE_PACE.feedback);
             setPowerAction(null);
           } else if (event.type === 'TURN_CHANGED' && event.payload.extraTurn) {
             const player = packet.snapshot.players.find(item => item.id === event.payload.playerId);
