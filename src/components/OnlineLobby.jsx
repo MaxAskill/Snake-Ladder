@@ -36,7 +36,7 @@ export default function OnlineLobby({ onBack }) {
       if (!saved?.roomCode) return;
       const result = saved.spectator
         ? await call(socket, 'room:watch', { code: saved.roomCode })
-        : await call(socket, 'room:reconnect', saved);
+        : await call(socket, 'room:reconnect', { ...saved, code: saved.roomCode });
       if (!result?.ok) { clearSession(); setSelf(null); setRoom(null); setView('menu'); return; }
       setSelf(saved); setRoom(result.room); setView(result.room.status === 'lobby' ? 'lobby' : 'game');
     };
